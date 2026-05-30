@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { HelpCircle, Check, X, RefreshCw, Award, Smile, BookOpen, Send, Calendar, ChevronRight } from "lucide-react";
+import { HelpCircle, Check, X, RefreshCw, Award, Smile, BookOpen, Send, Calendar, ChevronRight, Sparkles } from "lucide-react";
 import { DOKDO_QUIZ, DISCUSSION_QUESTIONS } from "../data";
 
 interface QuizAndReflectionProps {
@@ -20,7 +20,52 @@ export function QuizAndReflection({ reflections, onAddReflection }: QuizAndRefle
   const [submittingReflection, setSubmittingReflection] = useState<boolean>(false);
   const [aiGreeting, setAiGreeting] = useState<string>("");
 
+  // AI Auto-write keywords state
+  const [keywords, setKeywords] = useState<string>("");
+  const [generatingReflection, setGeneratingReflection] = useState<boolean>(false);
+
+  const presetKeywords = [
+    ["태정관지령", "기죽도약도", "주권증명", "역사왜곡"],
+    ["신한일어업협정", "중간수역", "배타적 수역", "국제법"],
+    ["공동 역사교과서", "한일청소년", "동아시아평화", "상생우호"]
+  ];
+
   const activeQuestion = DISCUSSION_QUESTIONS[selectedQuestionIdx];
+
+  // Helper method to auto-generate reflection from keywords
+  const generateReflection = async () => {
+    if (generatingReflection) return;
+
+    const currentPresets = presetKeywords[selectedQuestionIdx] || [];
+    const queryKeywords = keywords.trim() || currentPresets.join(", ");
+
+    try {
+      setGeneratingReflection(true);
+      const res = await fetch("/api/generate-reflection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: activeQuestion.question,
+          keywords: queryKeywords
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "소감 생성 오류");
+
+      setReflectionText(data.reflection || "");
+      
+      // If the input was empty, automatically set it to the keywords we queried with
+      if (!keywords.trim()) {
+        setKeywords(queryKeywords);
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert("AI 소감문 작성 중 오류가 발생했습니다: " + err.message);
+    } finally {
+      setGeneratingReflection(false);
+    }
+  };
 
   // 1. 퀴즈 정답 체크 핸들러
   const handleAnswerSelect = (questionId: number, optionIdx: number) => {
@@ -262,6 +307,76 @@ export function QuizAndReflection({ reflections, onAddReflection }: QuizAndRefle
 
             {/* Textarea writer */}
             <form onSubmit={handleReflectionSubmit} className="space-y-4">
+              {/* AI Auto-Generation helper block */}
+              <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-sans font-bold text-white flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-[#FF3E00]" />
+                    AI 소감문 추천 작성
+                  </span>
+                  <span className="text-[9px] text-slate-500 font-mono">추천 키워드 클릭 시 자동 완성</span>
+                </div>
+                
+                {/* Clickable recommendation badges */}
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="text-[9.5px] text-slate-400 self-center mr-1">추천태그:</span>
+                  {(presetKeywords[selectedQuestionIdx] || []).map((tag, tIdx) => (
+                    <button
+                      key={tIdx}
+                      type="button"
+                      onClick={() => {
+                        const currentKeywords = keywords.trim();
+                        if (!currentKeywords) {
+                          setKeywords(tag);
+                        } else if (!currentKeywords.includes(tag)) {
+                          setKeywords(currentKeywords + ", " + tag);
+                        }
+                      }}
+                      className="text-[9.5px] px-2 py-0.5 rounded-md bg-white/5 hover:bg-[#FF3E00]/15 hover:text-[#FF3E00] text-slate-300 border border-white/5 hover:border-[#FF3E00]/20 transition cursor-pointer select-none"
+                    >
+                      #{tag}
+                    </button>
+                  ))}
+                  {keywords.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setKeywords("")}
+                      className="text-[9.5px] px-1.5 py-0.5 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 transition cursor-pointer select-none"
+                    >
+                      초기화
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={keywords}
+                    onChange={e => setKeywords(e.target.value)}
+                    placeholder="예: 안용복, 태정관지령, 한일우호, 평화상생"
+                    className="flex-1 text-[11px] p-2.5 rounded-xl border border-white/10 bg-white/[0.02] text-white placeholder-slate-500 outline-none focus:border-[#FF3E00]"
+                  />
+                  <button
+                    type="button"
+                    disabled={generatingReflection}
+                    onClick={generateReflection}
+                    className="bg-[#FF3E00]/10 hover:bg-[#FF3E00]/25 text-[#FF3E00] border border-[#FF3E00]/20 hover:border-[#FF3E00]/40 transition px-3.5 py-2.5 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:hover:bg-white/5 disabled:hover:text-slate-300 disabled:hover:border-white/10 disabled:bg-white/5 disabled:border-white/10 disabled:text-slate-500 select-none shrink-0"
+                  >
+                    {generatingReflection ? (
+                      <>
+                        <RefreshCw className="h-3 w-3 animate-spin" />
+                        생성 중..
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-3.5 w-3.5" />
+                        소감문 생성
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
               <div className="space-y-1">
                 <label className="block text-[11px] font-bold text-slate-300 flex justify-between items-center">
                   <span>내 생각 적기 (최소 15자 이상)</span>

@@ -157,6 +157,58 @@ app.post("/api/evaluate-quiz", async (req, res) => {
   }
 });
 
+// 4. 키워드 기반 AI 소감문 자동 생성 API
+app.post("/api/generate-reflection", async (req, res) => {
+  try {
+    const { question, keywords } = req.body;
+    if (!keywords || keywords.trim() === "") {
+      return res.status(400).json({ error: "키워드를 입력해주세요." });
+    }
+
+    const ai = getAI();
+    const prompt = `
+      너는 독도 평화교육을 이수 중인 중고등학생이다.
+      아래의 '성찰 질문'에 대해 제시된 '핵심 키워드'를 모두 조화롭게 녹여내어, 진솔하고 깊이 있는 성찰 소감문(소감문)을 1인칭 학생 서술 시점으로 작성해라.
+
+      [정보]
+      - 성찰 질문 주제: "${question || "독도 역사와 평화"}"
+      - 제시된 핵심 키워드: ${keywords}
+
+      [가이드]
+      - 학생다운 친근하고 솔직한 어조(하십시오 체보다는 요/죠 형태의 경어체 혹은 에세이 스타일)로 작성해줘.
+      - 역사적/지리적 사실을 왜 배격하지 않는지, 왜 평화적 상생이 중요한지 깨달았다는 소감이 자연스럽게 드러나게 해줘.
+      - 글자 수는 약 150자~250자 전후로 너무 길지 않고 성의 있는 분량으로 명확하게 요약해줘.
+      - 다른 군더더기 서론 없이, 소감문 본문만 반환해줘. 따옴표는 제외해줘.
+    `;
+
+    let reflectionText = "";
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+      });
+      reflectionText = response.text || "";
+    } catch (aiError: any) {
+      console.warn("AI Generation failed, using intelligent fallback representation:", aiError);
+      
+      const cleanKeywords = keywords.split(/[\s,#]+/).filter((k: string) => k.trim().length > 0).join(", ");
+      
+      if (question && question.includes("태정관")) {
+        reflectionText = `이번 독도 평화수업과 ${cleanKeywords}에 대한 역사 공부는 제게 큰 깨달음을 주었어요. 일본 최고 행정기관인 태정관 스스로 '독도는 자국 영토가 아니다'라고 공인한 기명 사실을 직접 보며 소름이 돋았습니다. 역사적 사실을 왜 배격해서는 안 되는지 가슴 깊이 배웠고, 감정적인 비난 대신 확실한 문헌적 증명과 평화적인 관점을 통해 당당히 우리 주권을 전하자는 가치관이 한층 더 뚜렷해졌습니다.`;
+      } else if (question && question.includes("어업협정")) {
+        reflectionText = `신한일어업협정과 영해 기점, 그리고 배타적 경제수역(EEZ)에 이르기까지 복잡한 국제법의 역학을 ${cleanKeywords}라는 개념들을 통해 배우니 어업 주권에 대한 눈이 열렸습니다. 비록 어업 조정을 위해 중간수역으로 묶인 아픔과 갈등의 불씨가 잔존하지만, 이를 이성적으로 규명하고 자원의 공평한 분배와 해양 환경 수호를 명확히 해결하는 것이 왜 필수적인지 깨닫는 시간이자 소중한 탐구 기회였습니다.`;
+      } else {
+        reflectionText = `미래 세대인 우리가 갈등을 딛고 한일 청소년 평화 캠프나 공동 역사 교서 집필처럼 공통된 역사의 정답을 찾아 노력하는 것은 매우 가슴 벅차는 일이에요. ${cleanKeywords}와 같은 가치들이 결코 단순한 타협이 아니라, 동아시아의 평화 상생을 불러일으킬 소중한 우호의 교두보가 된다는 것을 깨달았습니다. 대립만을 지양하고, 굳건한 평화의 연대를 직접 실현해가며 다정히 기여하는 멋진 주역이 되고 싶습니다.`;
+      }
+    }
+
+    res.json({ reflection: reflectionText });
+  } catch (error: any) {
+    console.error("Generate Reflection Error:", error);
+    res.status(500).json({ error: "소감문 생성 도중 오류가 발생했습니다.", details: error.message });
+  }
+});
+
 // Vite integration middleware setup
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
